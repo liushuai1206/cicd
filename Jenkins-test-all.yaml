@@ -1,0 +1,178 @@
+#!/usr/bin/env groovy
+
+
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jenkins-slave
+  namespace: jenkins-prod
+spec:
+  containers:
+  - name: docker
+    #image: docker:24.0.6
+    image: ccr.ccs.tencentyun.com/huanghuanhui/docker:24.0.6
+    imagePullPolicy: IfNotPresent
+    readinessProbe:
+      exec:
+        command: [sh, -c, "ls -S /var/run/docker.sock"]
+    command:
+    - sleep
+    args:
+    - 99d
+    volumeMounts:
+    - name: docker-socket
+      mountPath: /var/run
+  - name: docker-daemon
+    #image: docker:24.0.6-dind
+    image: ccr.ccs.tencentyun.com/huanghuanhui/docker:24.0.6-dind
+    imagePullPolicy: IfNotPresent
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: docker-socket
+      mountPath: /var/run
+  - name: maven
+    #image: maven:3.8.1-jdk-8
+    image: ccr.ccs.tencentyun.com/huanghuanhui/maven:3.8.1-jdk-8
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    args:
+    - 99d
+    volumeMounts:
+    - name: maven-cache
+      mountPath: /root/.m2/repository
+  - name: node
+    #image: node:16.17.0-alpine
+    image: ccr.ccs.tencentyun.com/huanghuanhui/node:16.17.0-alpine
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    args:
+    - 99d
+    volumeMounts:
+    - name: node-cache
+      mountPath: /root/.npm
+  - name: golang
+    #image: golang:1.21.3
+    image: ccr.ccs.tencentyun.com/huanghuanhui/golang:1.21.3
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    args:
+    - 99d
+  - name: gcc
+    #image: gcc:13.2.0
+    image: ccr.ccs.tencentyun.com/huanghuanhui/gcc:13.2.0
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    args:
+    - 99d
+  - name: kubectl
+    image: ccr.ccs.tencentyun.com/huanghuanhui/kubectl:v1.28.4
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    args:
+    - 99d
+  volumes:
+  - name: docker-socket
+    emptyDir: {}
+  - name: maven-cache
+    emptyDir: {}
+  - name: node-cache
+    emptyDir: {}
+'''
+        }
+    }
+
+        
+    stages {
+        stage('测试 docker') {
+            steps {
+              container('docker') {
+                sh """
+                  docker version
+                """
+                }
+            }
+        }
+        stage('测试 maven') {
+            steps {
+              container('maven') {
+                sh """
+                  mvn -version && java -version && javac -version
+                """
+                }
+            }
+        }
+
+        stage('测试 node') {
+            steps {
+              container('node') {
+                sh """
+                  node --version && npm --version && yarn --version
+                """
+                }
+            }
+        }
+
+        stage('测试 golang') {
+            steps {
+              container('golang') {
+                sh """
+                  go version
+cat > HelloWorld.go << 'EOF'
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, world! My Name is go!")
+}
+EOF
+
+go build -o HelloWorld-go HelloWorld.go && ./HelloWorld-go
+                """
+                }
+            }
+        }
+
+        stage('测试 gcc') {
+            steps {
+              container('gcc') {
+                sh """
+                  gcc --version && g++ --version && make --version
+cat > HelloWorld.cpp << 'EOF'
+#include <iostream>
+
+int main() {
+    std::cout << "Hello, World! My Name is C++!" << std::endl;
+    return 0;
+}
+EOF
+
+g++ -o HelloWorld-cpp HelloWorld.cpp && ./HelloWorld-cpp
+                """
+                }
+            }
+        }
+        stage('测试 kubectl') {
+            steps {
+              container('kubectl') {
+                sh """
+                  kubectl get node -A -owide 
+                  kubectl get pods -A -owide
+                  kubectl get pv,pvc -A -owide 
+                """
+                }
+            }
+        }
+    }
+}

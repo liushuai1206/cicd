@@ -1,0 +1,76 @@
+#!/usr/bin/env groovy
+
+
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jenkins-slave
+  namespace: jenkins-prod
+spec:
+  containers:
+  - name: docker
+    #image: docker:24.0.6
+    image: ccr.ccs.tencentyun.com/huanghuanhui/docker:24.0.6
+    imagePullPolicy: IfNotPresent
+    readinessProbe:
+      exec:
+        command: [sh, -c, "ls -S /var/run/docker.sock"]
+    command:
+    - sleep
+    args:
+    - 99d
+    volumeMounts:
+    - name: docker-socket
+      mountPath: /var/run
+  - name: docker-daemon
+    #image: docker:24.0.6-dind
+    image: ccr.ccs.tencentyun.com/huanghuanhui/docker:24.0.6-dind
+    imagePullPolicy: IfNotPresent
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: docker-socket
+      mountPath: /var/run
+  - name: kubectl
+    image: ccr.ccs.tencentyun.com/huanghuanhui/kubectl:v1.28.4
+    imagePullPolicy: IfNotPresent
+    command:
+    - sleep
+    args:
+    - 99d
+  volumes:
+  - name: docker-socket
+    emptyDir: {}
+'''
+        }
+    }
+
+        
+    stages {
+        stage('测试 docker') {
+            steps {
+              container('docker') {
+                sh """
+                  docker version
+                """
+                }
+            }
+        }
+        stage('测试 kubectl') {
+            steps {
+              container('kubectl') {
+                sh """
+                  kubectl get node -A -owide 
+                  kubectl get pods -A -owide
+                  kubectl get pv,pvc -A -owide 
+                """
+                }
+            }
+        }
+    }
+}
